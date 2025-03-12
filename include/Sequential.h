@@ -50,63 +50,100 @@ void performHistogramEqualization(Mat &channel) {
     }
 }
 
-// Function to process an image, perform histogram equalization, display it, and log execution time
 void processImage(const string &inputPath, const string &csvPath) {
-    // Start timing
-    auto start = chrono::high_resolution_clock::now();
+    // Define target resolutions: HD, Full HD, and 4K
+    vector<Size> resolutions = { Size(1280, 720), Size(1920, 1080), Size(3840, 2160) };
 
-    // Load image
-    Mat image = imread(inputPath);
-    if (image.empty()) {
+    // ----- Grayscale Pipeline -----
+    Mat grayImage = imread(inputPath, IMREAD_GRAYSCALE);
+    if (grayImage.empty()) {
         cerr << "Error: Could not read image from " << inputPath << endl;
         return;
     }
+    
+    for (const auto &res : resolutions) {
+        // Resize the grayscale image to the target resolution
+        Mat resizedGray;
+        resize(grayImage, resizedGray, res);
+        
+        // Clone the image for processing so that the original remains intact
+        Mat equalizedGray = resizedGray.clone();
 
-    Mat equalizedImage;
-    if (image.channels() == 1) {
-        // Grayscale image
-        equalizedImage = image.clone();
-        performHistogramEqualization(equalizedImage);
-    } else {
-        // For a color image, convert to YCrCb and process the Y channel only
+        // Start timing for histogram equalization on grayscale image
+        auto start = chrono::high_resolution_clock::now();
+        performHistogramEqualization(equalizedGray);
+        auto end = chrono::high_resolution_clock::now();
+        double execTime = chrono::duration<double>(end - start).count();
+        
+        // Create a resolution string (e.g., "1280x720")
+        string resStr = to_string(res.width) + "x" + to_string(res.height);
+        
+        // Append the resolution, execution time, pipeline type, and number of channels (1 for grayscale) to CSV
+        ofstream csvFile(csvPath, ios::app);
+        if (csvFile.is_open()) {
+            csvFile << resStr << "," << execTime << ",SEQUENTIAL,1\n";
+            csvFile.close();
+        } else {
+            cerr << "Error: Could not open CSV file for writing." << endl;
+        }
+        
+        // Display the original resized grayscale and the equalized image
+        imshow("Grayscale Original - " + resStr, resizedGray);
+        imshow("Grayscale Equalized - " + resStr, equalizedGray);
+        waitKey(0);
+        destroyWindow("Grayscale Original - " + resStr);
+        destroyWindow("Grayscale Equalized - " + resStr);
+    }
+    
+    // ----- Color Pipeline -----
+    Mat colorImage = imread(inputPath, IMREAD_COLOR);
+    if (colorImage.empty()) {
+        cerr << "Error: Could not read image from " << inputPath << endl;
+        return;
+    }
+    
+    for (const auto &res : resolutions) {
+        // Resize the color image to the target resolution
+        Mat resizedColor;
+        resize(colorImage, resizedColor, res);
+        
+        // Start timing for color image processing
+        auto start = chrono::high_resolution_clock::now();
+        
+        // Convert the resized image to YCrCb color space
         Mat ycrcb;
-        cvtColor(image, ycrcb, COLOR_BGR2YCrCb);
-
-        // Split channels (Y, Cr, Cb)
+        cvtColor(resizedColor, ycrcb, COLOR_BGR2YCrCb);
+        
+        // Split the channels and perform histogram equalization on the Y channel
         vector<Mat> channels;
         split(ycrcb, channels);
-
-        // Equalize the Y channel
         performHistogramEqualization(channels[0]);
-
-        // Merge back and convert to BGR
+        
+        // Merge the channels back and convert the image to BGR
         merge(channels, ycrcb);
-        cvtColor(ycrcb, equalizedImage, COLOR_YCrCb2BGR);
+        Mat equalizedColor;
+        cvtColor(ycrcb, equalizedColor, COLOR_YCrCb2BGR);
+        
+        auto end = chrono::high_resolution_clock::now();
+        double execTime = chrono::duration<double>(end - start).count();
+        
+        // Create a resolution string (e.g., "1920x1080")
+        string resStr = to_string(res.width) + "x" + to_string(res.height);
+        
+        // Append the resolution, execution time, pipeline type, and number of channels (3 for color) to CSV
+        ofstream csvFile(csvPath, ios::app);
+        if (csvFile.is_open()) {
+            csvFile << resStr << "," << execTime << ",SEQUENTIAL,3\n";
+            csvFile.close();
+        } else {
+            cerr << "Error: Could not open CSV file for writing." << endl;
+        }
+        
+        // Display the original resized color image and the equalized result
+        imshow("Color Original - " + resStr, resizedColor);
+        imshow("Color Equalized - " + resStr, equalizedColor);
+        waitKey(0);
+        destroyWindow("Color Original - " + resStr);
+        destroyWindow("Color Equalized - " + resStr);
     }
-
-    // Stop timing
-    auto end = chrono::high_resolution_clock::now();
-    double execTime = chrono::duration<double>(end - start).count();
-
-    // Create resolution string in the format "widthxheight"
-    string resolution = to_string(image.cols) + "x" + to_string(image.rows);
-
-    // Append resolution, execution time, and voice type ("SEQUENTIAL") to CSV file
-    ofstream csvFile(csvPath, ios::app);
-    if (csvFile.is_open()) {
-        csvFile << resolution << "," << execTime << ",SEQUENTIAL" << "\n";
-        csvFile.close();
-    } else {
-        cerr << "Error: Could not open CSV file for writing." << endl;
-    }
-
-    cout << "Processed image with resolution " << resolution << " in " << execTime << " seconds.\n";
-
-    // Display the original and equalized images
-    imshow("Original Image", image);
-    imshow("Equalized Image", equalizedImage);
-
-    // Wait for user to press a key
-    waitKey(0);
-    destroyAllWindows();
 }
