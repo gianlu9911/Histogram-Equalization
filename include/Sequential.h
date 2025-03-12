@@ -125,7 +125,7 @@ void processImage(const string &inputPath, const string &csvPath) {
         cvtColor(ycrcb, equalizedColor, COLOR_YCrCb2BGR);
         
         auto end = chrono::high_resolution_clock::now();
-        double execTime = chrono::duration<double>(end - start).count();
+        double execTime = chrono::duration<double, milli>(end - start).count();
         
         // Create a resolution string (e.g., "1920x1080")
         string resStr = to_string(res.width) + "x" + to_string(res.height);
