@@ -1,0 +1,8 @@
+[
+{
+  "directory": "C:/Users/calli/Desktop/Histogram-Equalization/my_build_vs_gen",
+  "command": "C:\\PROGRA~1\\NVIDIA~2\\CUDA\\v12.4\\bin\\nvcc.exe -forward-unknown-to-host-compiler -I\"C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.4\\include\" -IC:\\Users\\calli\\Desktop\\Histogram-Equalization\\include -isystem \"C:\\Program Files\\opencv\\build\\include\" -D_WINDOWS -Xcompiler=\" /EHsc\" -Xcompiler=\" -Ob0 -Od /RTC1\" -std=c++17 \"--generate-code=arch=compute_86,code=[compute_86,sm_86]\" -Xcompiler=-MDd -Xcompiler=-Zi -x cu -rdc=true -c C:\\Users\\calli\\Desktop\\Histogram-Equalization\\main.cu -o CMakeFiles\\cuda_hello.dir\\main.cu.obj -Xcompiler=-FdCMakeFiles\\cuda_hello.dir\\,-FS",
+  "file": "C:\\Users\\calli\\Desktop\\Histogram-Equalization\\main.cu",
+  "output": "CMakeFiles\\cuda_hello.dir\\main.cu.obj"
+}
+]

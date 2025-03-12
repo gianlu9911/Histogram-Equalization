@@ -1,0 +1,4 @@
+# ninja log v6
+2	5701	7635009170842847	CMakeFiles/cuda_hello.dir/main.cu.obj	8ec9643ef6ff5f1c
+5704	6994	7635009227836165	CMakeFiles/cuda_hello.dir/cmake_device_link.obj	e800f0b8e3e8b80c
+6994	7506	7635009240772606	cuda_hello.exe	41a1fa341c1247b1
