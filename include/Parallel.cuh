@@ -6,13 +6,38 @@
 
 #define NUM_BINS 256
 
-// CUDA kernel to compute histogram: each thread processes one pixel.
+#define BINS 256  // Number of intensity levels
+
+// CUDA kernel using shared memory for histogram computation
 __global__ void computeHistogram(const unsigned char* d_img, int* d_hist, int imgSize) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if(idx < imgSize) {
-        atomicAdd(&d_hist[d_img[idx]], 1);
+    // Shared memory for per-block histogram
+    __shared__ int sharedHist[BINS];
+
+    // Thread index within block
+    int tid = threadIdx.x + blockDim.x * threadIdx.y;
+    
+    // Initialize shared histogram bins to zero
+    if (tid < BINS) {
+        sharedHist[tid] = 0;
+    }
+    __syncthreads();
+
+    // Global index for this thread
+    int idx = blockIdx.x * (blockDim.x * blockDim.y) + tid;
+
+    // Process image pixels in a strided loop
+    while (idx < imgSize) {
+        atomicAdd(&sharedHist[d_img[idx]], 1);
+        idx += blockDim.x * blockDim.y * gridDim.x;  // Stride over the image
+    }
+    __syncthreads();
+
+    // Reduce shared histogram into global histogram
+    if (tid < BINS) {
+        atomicAdd(&d_hist[tid], sharedHist[tid]);
     }
 }
+
 
 // CUDA kernel to apply the equalization using the precomputed lookup table (LUT).
 __global__ void applyEqualization(const unsigned char* d_img, unsigned char* d_out, 
@@ -164,4 +189,3 @@ int processImageParallel(std::string path, std::string csvPath) {
     
     return 0;
 }
-
