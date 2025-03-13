@@ -8,27 +8,39 @@
 
 #define BINS 256  // Number of intensity levels
 
-// CUDA kernel using shared memory for histogram computation
-__global__ void computeHistogram(const unsigned char* d_img, int* d_hist, int imgSize) {
+
+#define TILE_WIDTH 32  // Define tile size
+#define BINS 256
+
+#include <opencv2/opencv.hpp>
+#include <iostream>
+#include <fstream>
+#include <chrono>
+#include <cuda_runtime.h>
+
+#define TILE_WIDTH 32  // Define tile size
+#define BINS 256  // Number of intensity levels
+
+// CUDA kernel using tiling and shared memory for histogram computation
+__global__ void computeHistogramTiled(const unsigned char* d_img, int* d_hist, int width, int height) {
     // Shared memory for per-block histogram
     __shared__ int sharedHist[BINS];
 
-    // Thread index within block
-    int tid = threadIdx.x + blockDim.x * threadIdx.y;
-    
     // Initialize shared histogram bins to zero
+    int tid = threadIdx.x + threadIdx.y * blockDim.x;
     if (tid < BINS) {
         sharedHist[tid] = 0;
     }
     __syncthreads();
 
-    // Global index for this thread
-    int idx = blockIdx.x * (blockDim.x * blockDim.y) + tid;
+    // Compute pixel coordinates
+    int x = blockIdx.x * TILE_WIDTH + threadIdx.x;
+    int y = blockIdx.y * TILE_WIDTH + threadIdx.y;
 
-    // Process image pixels in a strided loop
-    while (idx < imgSize) {
+    // Compute linear index in the global image
+    if (x < width && y < height) {
+        int idx = y * width + x;
         atomicAdd(&sharedHist[d_img[idx]], 1);
-        idx += blockDim.x * blockDim.y * gridDim.x;  // Stride over the image
     }
     __syncthreads();
 
@@ -56,7 +68,7 @@ int processImageParallel(std::string path, std::string csvPath) {
         return -1;
     }
     cv::resize(input, input, cv::Size(3840, 2160));  // Resize to 512x512 for consistency.
-    
+        
     // Get resolution and number of channels.
     int width = input.cols;
     int height = input.rows;
@@ -104,9 +116,18 @@ int processImageParallel(std::string path, std::string csvPath) {
     // Start timing the execution.
     auto start = std::chrono::high_resolution_clock::now();
     
-    // Launch the kernel to compute the histogram.
-    computeHistogram<<<blocksPerGrid, threadsPerBlock>>>(d_img, d_hist, imgSize);
+    dim3 blockDim(TILE_WIDTH, TILE_WIDTH);  // 32x32 threads per block
+    dim3 gridDim((width + TILE_WIDTH - 1) / TILE_WIDTH, (height + TILE_WIDTH - 1) / TILE_WIDTH);
+
+    // Launch the tiled histogram kernel
+    computeHistogramTiled<<<gridDim, blockDim>>>(d_img, d_hist, width, height);
+
     cudaDeviceSynchronize();
+
+    for (int i = 0; i < NUM_BINS; i++) {
+        std::cout << h_hist[i] << " ";
+    }   
+
     
     // Copy the histogram data back to the host.
     cudaMemcpy(h_hist, d_hist, NUM_BINS * sizeof(int), cudaMemcpyDeviceToHost);
@@ -146,12 +167,7 @@ int processImageParallel(std::string path, std::string csvPath) {
     // Copy the equalized image back to the host.
     cudaMemcpy(h_out, d_out, imgSize * sizeof(unsigned char), cudaMemcpyDeviceToHost);
     
-    // Display the first 10 equalized pixel values for verification.
-    std::cout << "First 10 equalized pixel values:" << std::endl;
-    for (int i = 0; i < 10; i++) {
-        std::cout << static_cast<int>(h_out[i]) << " ";
-    }
-    std::cout << std::endl;
+    
     
     // Create an OpenCV Mat from the equalized image data.
     cv::Mat equalizedImage(height, width, CV_8UC1, h_out);

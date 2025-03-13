@@ -2,7 +2,7 @@
 #include "Parallel.cuh"
 int main() {
     // Update the paths as needed
-    string path = "../imgs/lena_rgb.png";
+    string path = "../imgs/lena_4k.jpg";
     string csvPath = "../execution_times.csv";
 
     // processImage(path, csvPath);
