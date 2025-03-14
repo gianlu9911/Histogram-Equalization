@@ -4,15 +4,18 @@
 #include <chrono>
 #include <cuda_runtime.h>
 
-#define TILE_WIDTH 16  // Define tile size
 #define NUM_BINS 256
+
+#define TILE_WIDTH 32  // Define tile size
+
+
 
 // CUDA kernel using tiling and shared memory for histogram computation
 __global__ void computeHistogramTiled(const unsigned char* d_img, int* d_hist, int width, int height) {
     // Shared memory for per-block histogram
     __shared__ int sharedHist[NUM_BINS];
 
-    // Initialize shared histogram NUM_bins to zero
+    // Initialize shared histogram bins to zero
     int tid = threadIdx.x + threadIdx.y * blockDim.x;
     if (tid < NUM_BINS) {
         sharedHist[tid] = 0;
@@ -175,9 +178,8 @@ int processImageParallel(std::string path, std::string csvPath) {
         csvFile << "Resolution,ExecutionTime (ms),Channels,Type\n";
     }
     csvFile << std::to_string(width) + "x" + std::to_string(height) << ","
-            << execTime.count() << ","
-            << channels << ","
-            << "PARALLEL" << "\n";
+            << execTime.count() << "," << "PARALLEL" << ","
+            << channels << "\n";
     csvFile.close();
     
     // Clean up device and host memory.
