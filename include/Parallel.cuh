@@ -4,31 +4,17 @@
 #include <chrono>
 #include <cuda_runtime.h>
 
+#define TILE_WIDTH 16  // Define tile size
 #define NUM_BINS 256
-
-#define BINS 256  // Number of intensity levels
-
-
-#define TILE_WIDTH 32  // Define tile size
-#define BINS 256
-
-#include <opencv2/opencv.hpp>
-#include <iostream>
-#include <fstream>
-#include <chrono>
-#include <cuda_runtime.h>
-
-#define TILE_WIDTH 32  // Define tile size
-#define BINS 256  // Number of intensity levels
 
 // CUDA kernel using tiling and shared memory for histogram computation
 __global__ void computeHistogramTiled(const unsigned char* d_img, int* d_hist, int width, int height) {
     // Shared memory for per-block histogram
-    __shared__ int sharedHist[BINS];
+    __shared__ int sharedHist[NUM_BINS];
 
-    // Initialize shared histogram bins to zero
+    // Initialize shared histogram NUM_bins to zero
     int tid = threadIdx.x + threadIdx.y * blockDim.x;
-    if (tid < BINS) {
+    if (tid < NUM_BINS) {
         sharedHist[tid] = 0;
     }
     __syncthreads();
@@ -45,7 +31,7 @@ __global__ void computeHistogramTiled(const unsigned char* d_img, int* d_hist, i
     __syncthreads();
 
     // Reduce shared histogram into global histogram
-    if (tid < BINS) {
+    if (tid < NUM_BINS) {
         atomicAdd(&d_hist[tid], sharedHist[tid]);
     }
 }
