@@ -1,98 +1,79 @@
-#include "Sequential.h"
-#include "Parallel.cuh"
-int main2() {
-    // Update the paths as needed
-    string path = "../imgs/lena_4k.jpg";
-    string csvPath = "../execution_times.csv";
-
-    processImage(path, csvPath);
-    processImageParallel(path, csvPath);
-
-    return 0;
-}
-
-
 #include <cuda_runtime.h>
 #include <iostream>
-#include <opencv2/opencv.hpp>  // Include OpenCV for image loading and manipulation
+#include <opencv2/opencv.hpp>
 
-struct Pixel {
-    unsigned char R;
-    unsigned char G;
-    unsigned char B;
-};
-
-__global__ void rgbToYCbCrKernel(const Pixel* d_rgbImage, unsigned char* d_yImage, unsigned char* d_c1Image, unsigned char* d_c2Image, int width, int height) {
+__global__ void rgbToYCbCrKernelPitched(const uchar3* d_rgbImage, size_t pitch_rgb, 
+                                        unsigned char* d_yImage, size_t pitch_y, 
+                                        unsigned char* d_c1Image, size_t pitch_c1, 
+                                        unsigned char* d_c2Image, size_t pitch_c2, 
+                                        int width, int height) {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
 
     if (x < width && y < height) {
-        int pixelIndex = y * width + x;  // Index for the pixel
+        // Use pitched memory addressing
+        uchar3* row_rgb = (uchar3*)((char*)d_rgbImage + y * pitch_rgb);
+        unsigned char* row_y = (unsigned char*)((char*)d_yImage + y * pitch_y);
+        unsigned char* row_c1 = (unsigned char*)((char*)d_c1Image + y * pitch_c1);
+        unsigned char* row_c2 = (unsigned char*)((char*)d_c2Image + y * pitch_c2);
 
-        // Fetch RGB values from coalesced memory (using struct)
-        unsigned char R = d_rgbImage[pixelIndex].R;
-        unsigned char G = d_rgbImage[pixelIndex].G;
-        unsigned char B = d_rgbImage[pixelIndex].B;
+        uchar3 rgb = row_rgb[x];
 
-        // Convert to normalized floats
-        float nNormalizedR = R * 0.003921569f;
-        float nNormalizedG = G * 0.003921569f;
-        float nNormalizedB = B * 0.003921569f;
+        float nR = rgb.x * 0.003921569f;
+        float nG = rgb.y * 0.003921569f;
+        float nB = rgb.z * 0.003921569f;
 
-        // Compute YCbCr components
-        float nY = 0.299f * nNormalizedR + 0.587f * nNormalizedG + 0.114f * nNormalizedB;
-        float nC1 = nNormalizedB - nY;  // Cb
+        float nY = 0.299f * nR + 0.587f * nG + 0.114f * nB;
+        float nC1 = nB - nY;  
+        float nC2 = nR - nY;  
+
         nC1 = 111.4f * 0.003921569f * nC1 + 156.0f * 0.003921569f;
-        float nC2 = nNormalizedR - nY;  // Cr
         nC2 = 135.64f * 0.003921569f * nC2 + 137.0f * 0.003921569f;
-
-        // Adjust the Y component
         nY = 1.0f * 0.713267f * nY;
 
-        // Write back the YCbCr components
-        d_yImage[pixelIndex] = (unsigned char)(nY * 255.0f);
-        d_c1Image[pixelIndex] = (unsigned char)(nC1 * 255.0f);  // Cb
-        d_c2Image[pixelIndex] = (unsigned char)(nC2 * 255.0f);  // Cr
+        row_y[x] = (unsigned char)(nY * 255.0f);
+        row_c1[x] = (unsigned char)(nC1 * 255.0f);
+        row_c2[x] = (unsigned char)(nC2 * 255.0f);
     }
 }
 
-void rgbToYCbCr(const unsigned char* h_rgbImage, unsigned char* h_yImage, unsigned char* h_c1Image, unsigned char* h_c2Image, int width, int height) {
-    // Number of pixels
-    int numPixels = width * height;
+void rgbToYCbCrPitched(const unsigned char* h_rgbImage, unsigned char* h_yImage, 
+                       unsigned char* h_c1Image, unsigned char* h_c2Image, 
+                       int width, int height) {
+    size_t pitch_rgb, pitch_y, pitch_c1, pitch_c2;
 
-    // Allocate device memory
-    Pixel* d_rgbImage;
+    // Allocate pitched device memory
+    uchar3* d_rgbImage;
     unsigned char* d_yImage;
     unsigned char* d_c1Image;
     unsigned char* d_c2Image;
 
-    cudaMalloc((void**)&d_rgbImage, numPixels * sizeof(Pixel));
-    cudaMalloc((void**)&d_yImage, numPixels * sizeof(unsigned char));
-    cudaMalloc((void**)&d_c1Image, numPixels * sizeof(unsigned char));
-    cudaMalloc((void**)&d_c2Image, numPixels * sizeof(unsigned char));
+    cudaMallocPitch(&d_rgbImage, &pitch_rgb, width * sizeof(uchar3), height);
+    cudaMallocPitch(&d_yImage, &pitch_y, width * sizeof(unsigned char), height);
+    cudaMallocPitch(&d_c1Image, &pitch_c1, width * sizeof(unsigned char), height);
+    cudaMallocPitch(&d_c2Image, &pitch_c2, width * sizeof(unsigned char), height);
 
-    // Copy data to device
-    cudaMemcpy(d_rgbImage, h_rgbImage, numPixels * sizeof(Pixel), cudaMemcpyHostToDevice);
+    // Copy data to device using cudaMemcpy2D
+    cudaMemcpy2D(d_rgbImage, pitch_rgb, h_rgbImage, width * sizeof(uchar3), 
+                 width * sizeof(uchar3), height, cudaMemcpyHostToDevice);
 
-    // Define block and grid sizes
+    // Define kernel launch configuration
     dim3 blockSize(16, 16);
-    dim3 gridSize((width + blockSize.x - 1) / blockSize.x, (height + blockSize.y - 1) / blockSize.y);
+    dim3 gridSize((width + blockSize.x - 1) / blockSize.x, 
+                  (height + blockSize.y - 1) / blockSize.y);
 
-    // Launch the kernel
-    rgbToYCbCrKernel<<<gridSize, blockSize>>>(d_rgbImage, d_yImage, d_c1Image, d_c2Image, width, height);
-
-    // Check for kernel launch errors
+    // Launch kernel
+    rgbToYCbCrKernelPitched<<<gridSize, blockSize>>>(d_rgbImage, pitch_rgb, d_yImage, pitch_y, 
+                                                     d_c1Image, pitch_c1, d_c2Image, pitch_c2, width, height);
     cudaDeviceSynchronize();
-    cudaError_t err = cudaGetLastError();
-    if (err != cudaSuccess) {
-        std::cerr << "CUDA kernel error: " << cudaGetErrorString(err) << std::endl;
-        return;
-    }
 
     // Copy results back to host
-    cudaMemcpy(h_yImage, d_yImage, numPixels * sizeof(unsigned char), cudaMemcpyDeviceToHost);
-    cudaMemcpy(h_c1Image, d_c1Image, numPixels * sizeof(unsigned char), cudaMemcpyDeviceToHost);
-    cudaMemcpy(h_c2Image, d_c2Image, numPixels * sizeof(unsigned char), cudaMemcpyDeviceToHost);
+    cudaMemcpy2D(h_yImage, width * sizeof(unsigned char), d_yImage, pitch_y, 
+                 width * sizeof(unsigned char), height, cudaMemcpyDeviceToHost);
+    cudaMemcpy2D(h_c1Image, width * sizeof(unsigned char), d_c1Image, pitch_c1, 
+                 width * sizeof(unsigned char), height, cudaMemcpyDeviceToHost);
+    cudaMemcpy2D(h_c2Image, width * sizeof(unsigned char), d_c2Image, pitch_c2, 
+                 width * sizeof(unsigned char), height, cudaMemcpyDeviceToHost);
 
     // Free device memory
     cudaFree(d_rgbImage);
@@ -102,50 +83,54 @@ void rgbToYCbCr(const unsigned char* h_rgbImage, unsigned char* h_yImage, unsign
 }
 
 int main() {
-    // Read the image using OpenCV
-    cv::Mat img = cv::imread("../imgs/lena_rgb.png", cv::IMREAD_COLOR);  // Read the image in RGB format
+    cv::Mat img = cv::imread("../imgs/lena_rgb.png", cv::IMREAD_COLOR);
     if (img.empty()) {
         std::cerr << "Error: Could not load image!" << std::endl;
         return -1;
     }
-    cv::resize(img, img, cv::Size(3080,2090));  // Resize to 512x512 for consistency
-    int width = img.cols;  // Image width
-    int height = img.rows; // Image height
+    cv::resize(img, img, cv::Size(3080, 2090));
+    int width = img.cols;
+    int height = img.rows;
 
-    // Allocate host memory for RGB and YCbCr channels
-    unsigned char* h_rgbImage = new unsigned char[width * height * 3]; // RGB image data
-    unsigned char* h_yImage = new unsigned char[width * height];        // Y channel
-    unsigned char* h_c1Image = new unsigned char[width * height];       // Cb channel
-    unsigned char* h_c2Image = new unsigned char[width * height];       // Cr channel
+    // Allocate pinned memory (page-locked memory)
+    unsigned char* h_rgbImage;
+    unsigned char* h_yImage;
+    unsigned char* h_c1Image;
+    unsigned char* h_c2Image;
 
-    // Convert OpenCV image (Mat) to raw RGB data
+    cudaMallocHost((void**)&h_rgbImage, width * height * 3); 
+    cudaMallocHost((void**)&h_yImage, width * height);
+    cudaMallocHost((void**)&h_c1Image, width * height);
+    cudaMallocHost((void**)&h_c2Image, width * height);
+
+    // Load image into pinned memory
     for (int i = 0; i < height; ++i) {
         for (int j = 0; j < width; ++j) {
-            cv::Vec3b color = img.at<cv::Vec3b>(i, j);  // BGR format in OpenCV
-            int idx = (i * width + j) * 3;
-            h_rgbImage[idx] = color[2]; // R
-            h_rgbImage[idx + 1] = color[1]; // G
-            h_rgbImage[idx + 2] = color[0]; // B
+            cv::Vec3b color = img.at<cv::Vec3b>(i, j);
+            int idx = i * width + j;
+            h_rgbImage[idx * 3] = color[2];  
+            h_rgbImage[idx * 3 + 1] = color[1];
+            h_rgbImage[idx * 3 + 2] = color[0];
         }
     }
 
-    // Convert RGB to YCbCr
-    rgbToYCbCr(h_rgbImage, h_yImage, h_c1Image, h_c2Image, width, height);
+    // Perform YCbCr conversion with pitched memory
+    rgbToYCbCrPitched(h_rgbImage, h_yImage, h_c1Image, h_c2Image, width, height);
 
-    // For example, save the Y, Cb, and Cr channels as images (if needed)
+    // Save results
     cv::Mat yImage(height, width, CV_8UC1, h_yImage);
     cv::Mat c1Image(height, width, CV_8UC1, h_c1Image);
     cv::Mat c2Image(height, width, CV_8UC1, h_c2Image);
-    
-    cv::imwrite("y_channel.png", yImage);
-    cv::imwrite("c1_channel.png", c1Image); // Cb
-    cv::imwrite("c2_channel.png", c2Image); // Cr
 
-    // Clean up
-    delete[] h_rgbImage;
-    delete[] h_yImage;
-    delete[] h_c1Image;
-    delete[] h_c2Image;
+    cv::imwrite("y_channel.png", yImage);
+    cv::imwrite("c1_channel.png", c1Image);
+    cv::imwrite("c2_channel.png", c2Image);
+
+    // Free pinned memory
+    cudaFreeHost(h_rgbImage);
+    cudaFreeHost(h_yImage);
+    cudaFreeHost(h_c1Image);
+    cudaFreeHost(h_c2Image);
 
     return 0;
 }
