@@ -11,7 +11,6 @@ __global__ void rgbToYCbCrKernelPitched(const uchar3* d_rgbImage, size_t pitch_r
     int y = blockIdx.y * blockDim.y + threadIdx.y;
 
     if (x < width && y < height) {
-        // Use pitched memory addressing
         uchar3* row_rgb = (uchar3*)((char*)d_rgbImage + y * pitch_rgb);
         unsigned char* row_y = (unsigned char*)((char*)d_yImage + y * pitch_y);
         unsigned char* row_c1 = (unsigned char*)((char*)d_c1Image + y * pitch_c1);
@@ -37,12 +36,10 @@ __global__ void rgbToYCbCrKernelPitched(const uchar3* d_rgbImage, size_t pitch_r
     }
 }
 
-void rgbToYCbCrPitched(const unsigned char* h_rgbImage, unsigned char* h_yImage, 
+float rgbToYCbCrPitched(const unsigned char* h_rgbImage, unsigned char* h_yImage, 
                        unsigned char* h_c1Image, unsigned char* h_c2Image, 
                        int width, int height) {
     size_t pitch_rgb, pitch_y, pitch_c1, pitch_c2;
-
-    // Allocate pitched device memory
     uchar3* d_rgbImage;
     unsigned char* d_yImage;
     unsigned char* d_c1Image;
@@ -53,21 +50,30 @@ void rgbToYCbCrPitched(const unsigned char* h_rgbImage, unsigned char* h_yImage,
     cudaMallocPitch(&d_c1Image, &pitch_c1, width * sizeof(unsigned char), height);
     cudaMallocPitch(&d_c2Image, &pitch_c2, width * sizeof(unsigned char), height);
 
-    // Copy data to device using cudaMemcpy2D
     cudaMemcpy2D(d_rgbImage, pitch_rgb, h_rgbImage, width * sizeof(uchar3), 
                  width * sizeof(uchar3), height, cudaMemcpyHostToDevice);
 
-    // Define kernel launch configuration
     dim3 blockSize(16, 16);
     dim3 gridSize((width + blockSize.x - 1) / blockSize.x, 
                   (height + blockSize.y - 1) / blockSize.y);
 
-    // Launch kernel
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+    cudaEventRecord(start);
+
     rgbToYCbCrKernelPitched<<<gridSize, blockSize>>>(d_rgbImage, pitch_rgb, d_yImage, pitch_y, 
                                                      d_c1Image, pitch_c1, d_c2Image, pitch_c2, width, height);
     cudaDeviceSynchronize();
 
-    // Copy results back to host
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+
+    float elapsedTime;
+    cudaEventElapsedTime(&elapsedTime, start, stop);
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
+
     cudaMemcpy2D(h_yImage, width * sizeof(unsigned char), d_yImage, pitch_y, 
                  width * sizeof(unsigned char), height, cudaMemcpyDeviceToHost);
     cudaMemcpy2D(h_c1Image, width * sizeof(unsigned char), d_c1Image, pitch_c1, 
@@ -75,11 +81,12 @@ void rgbToYCbCrPitched(const unsigned char* h_rgbImage, unsigned char* h_yImage,
     cudaMemcpy2D(h_c2Image, width * sizeof(unsigned char), d_c2Image, pitch_c2, 
                  width * sizeof(unsigned char), height, cudaMemcpyDeviceToHost);
 
-    // Free device memory
     cudaFree(d_rgbImage);
     cudaFree(d_yImage);
     cudaFree(d_c1Image);
     cudaFree(d_c2Image);
+
+    return elapsedTime;
 }
 
 int main() {
@@ -92,7 +99,6 @@ int main() {
     int width = img.cols;
     int height = img.rows;
 
-    // Allocate pinned memory (page-locked memory)
     unsigned char* h_rgbImage;
     unsigned char* h_yImage;
     unsigned char* h_c1Image;
@@ -103,7 +109,6 @@ int main() {
     cudaMallocHost((void**)&h_c1Image, width * height);
     cudaMallocHost((void**)&h_c2Image, width * height);
 
-    // Load image into pinned memory
     for (int i = 0; i < height; ++i) {
         for (int j = 0; j < width; ++j) {
             cv::Vec3b color = img.at<cv::Vec3b>(i, j);
@@ -114,10 +119,9 @@ int main() {
         }
     }
 
-    // Perform YCbCr conversion with pitched memory
-    rgbToYCbCrPitched(h_rgbImage, h_yImage, h_c1Image, h_c2Image, width, height);
+    float executionTime = rgbToYCbCrPitched(h_rgbImage, h_yImage, h_c1Image, h_c2Image, width, height);
+    std::cout << "Total execution time: " << executionTime << " ms" << std::endl;
 
-    // Save results
     cv::Mat yImage(height, width, CV_8UC1, h_yImage);
     cv::Mat c1Image(height, width, CV_8UC1, h_c1Image);
     cv::Mat c2Image(height, width, CV_8UC1, h_c2Image);
@@ -126,7 +130,6 @@ int main() {
     cv::imwrite("c1_channel.png", c1Image);
     cv::imwrite("c2_channel.png", c2Image);
 
-    // Free pinned memory
     cudaFreeHost(h_rgbImage);
     cudaFreeHost(h_yImage);
     cudaFreeHost(h_c1Image);
