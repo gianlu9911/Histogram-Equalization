@@ -2,7 +2,7 @@
 #include <iostream>
 #include <opencv2/opencv.hpp>
 
-__global__ void rgbToYCbCrKernelPitched(const uchar3* d_rgbImage, size_t pitch_rgb, 
+__global__ void rgbToYCbCrKernelPitched(const uchar4* d_rgbImage, size_t pitch_rgb, 
                                         unsigned char* d_yImage, size_t pitch_y, 
                                         unsigned char* d_c1Image, size_t pitch_c1, 
                                         unsigned char* d_c2Image, size_t pitch_c2, 
@@ -11,12 +11,12 @@ __global__ void rgbToYCbCrKernelPitched(const uchar3* d_rgbImage, size_t pitch_r
     int y = blockIdx.y * blockDim.y + threadIdx.y;
 
     if (x < width && y < height) {
-        uchar3* row_rgb = (uchar3*)((char*)d_rgbImage + y * pitch_rgb);
+        uchar4* row_rgb = (uchar4*)((char*)d_rgbImage + y * pitch_rgb);
         unsigned char* row_y = (unsigned char*)((char*)d_yImage + y * pitch_y);
         unsigned char* row_c1 = (unsigned char*)((char*)d_c1Image + y * pitch_c1);
         unsigned char* row_c2 = (unsigned char*)((char*)d_c2Image + y * pitch_c2);
 
-        uchar3 rgb = row_rgb[x];
+        uchar4 rgb = row_rgb[x];
 
         float nR = rgb.x * 0.003921569f;
         float nG = rgb.y * 0.003921569f;
@@ -40,18 +40,20 @@ float rgbToYCbCrPitched(const unsigned char* h_rgbImage, unsigned char* h_yImage
                        unsigned char* h_c1Image, unsigned char* h_c2Image, 
                        int width, int height) {
     size_t pitch_rgb, pitch_y, pitch_c1, pitch_c2;
-    uchar3* d_rgbImage;
+    uchar4* d_rgbImage;
     unsigned char* d_yImage;
     unsigned char* d_c1Image;
     unsigned char* d_c2Image;
+    cudaStream_t stream;
+    cudaStreamCreate(&stream);
 
-    cudaMallocPitch(&d_rgbImage, &pitch_rgb, width * sizeof(uchar3), height);
+    cudaMallocPitch(&d_rgbImage, &pitch_rgb, width * sizeof(uchar4), height);
     cudaMallocPitch(&d_yImage, &pitch_y, width * sizeof(unsigned char), height);
     cudaMallocPitch(&d_c1Image, &pitch_c1, width * sizeof(unsigned char), height);
     cudaMallocPitch(&d_c2Image, &pitch_c2, width * sizeof(unsigned char), height);
 
-    cudaMemcpy2D(d_rgbImage, pitch_rgb, h_rgbImage, width * sizeof(uchar3), 
-                 width * sizeof(uchar3), height, cudaMemcpyHostToDevice);
+    cudaMemcpy2DAsync(d_rgbImage, pitch_rgb, h_rgbImage, width * sizeof(uchar4), 
+                      width * sizeof(uchar4), height, cudaMemcpyHostToDevice, stream);
 
     dim3 blockSize(16, 16);
     dim3 gridSize((width + blockSize.x - 1) / blockSize.x, 
@@ -60,13 +62,13 @@ float rgbToYCbCrPitched(const unsigned char* h_rgbImage, unsigned char* h_yImage
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
-    cudaEventRecord(start);
+    cudaEventRecord(start, stream);
 
-    rgbToYCbCrKernelPitched<<<gridSize, blockSize>>>(d_rgbImage, pitch_rgb, d_yImage, pitch_y, 
-                                                     d_c1Image, pitch_c1, d_c2Image, pitch_c2, width, height);
-    cudaDeviceSynchronize();
+    rgbToYCbCrKernelPitched<<<gridSize, blockSize, 0, stream>>>(d_rgbImage, pitch_rgb, d_yImage, pitch_y, 
+                                                                d_c1Image, pitch_c1, d_c2Image, pitch_c2, width, height);
+    cudaStreamSynchronize(stream);
 
-    cudaEventRecord(stop);
+    cudaEventRecord(stop, stream);
     cudaEventSynchronize(stop);
 
     float elapsedTime;
@@ -74,12 +76,15 @@ float rgbToYCbCrPitched(const unsigned char* h_rgbImage, unsigned char* h_yImage
     cudaEventDestroy(start);
     cudaEventDestroy(stop);
 
-    cudaMemcpy2D(h_yImage, width * sizeof(unsigned char), d_yImage, pitch_y, 
-                 width * sizeof(unsigned char), height, cudaMemcpyDeviceToHost);
-    cudaMemcpy2D(h_c1Image, width * sizeof(unsigned char), d_c1Image, pitch_c1, 
-                 width * sizeof(unsigned char), height, cudaMemcpyDeviceToHost);
-    cudaMemcpy2D(h_c2Image, width * sizeof(unsigned char), d_c2Image, pitch_c2, 
-                 width * sizeof(unsigned char), height, cudaMemcpyDeviceToHost);
+    cudaMemcpy2DAsync(h_yImage, width * sizeof(unsigned char), d_yImage, pitch_y, 
+                      width * sizeof(unsigned char), height, cudaMemcpyDeviceToHost, stream);
+    cudaMemcpy2DAsync(h_c1Image, width * sizeof(unsigned char), d_c1Image, pitch_c1, 
+                      width * sizeof(unsigned char), height, cudaMemcpyDeviceToHost, stream);
+    cudaMemcpy2DAsync(h_c2Image, width * sizeof(unsigned char), d_c2Image, pitch_c2, 
+                      width * sizeof(unsigned char), height, cudaMemcpyDeviceToHost, stream);
+    
+    cudaStreamSynchronize(stream);
+    cudaStreamDestroy(stream);
 
     cudaFree(d_rgbImage);
     cudaFree(d_yImage);
@@ -104,7 +109,7 @@ int main() {
     unsigned char* h_c1Image;
     unsigned char* h_c2Image;
 
-    cudaMallocHost((void**)&h_rgbImage, width * height * 3); 
+    cudaMallocHost((void**)&h_rgbImage, width * height * 4); 
     cudaMallocHost((void**)&h_yImage, width * height);
     cudaMallocHost((void**)&h_c1Image, width * height);
     cudaMallocHost((void**)&h_c2Image, width * height);
@@ -113,9 +118,10 @@ int main() {
         for (int j = 0; j < width; ++j) {
             cv::Vec3b color = img.at<cv::Vec3b>(i, j);
             int idx = i * width + j;
-            h_rgbImage[idx * 3] = color[2];  
-            h_rgbImage[idx * 3 + 1] = color[1];
-            h_rgbImage[idx * 3 + 2] = color[0];
+            h_rgbImage[idx * 4] = color[2];  
+            h_rgbImage[idx * 4 + 1] = color[1];
+            h_rgbImage[idx * 4 + 2] = color[0];
+            h_rgbImage[idx * 4 + 3] = 0;
         }
     }
 

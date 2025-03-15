@@ -41,3 +41,6 @@
 3	7552	7637302352871306	CMakeFiles/cuda_hello.dir/main.cu.obj	8ec9643ef6ff5f1c
 7552	11354	7637302428390854	CMakeFiles/cuda_hello.dir/cmake_device_link.obj	e800f0b8e3e8b80c
 11354	11740	7637302466318602	cuda_hello.exe	41a1fa341c1247b1
+30	7536	7637305197573210	CMakeFiles/cuda_hello.dir/main.cu.obj	8ec9643ef6ff5f1c
+7536	11452	7637305272547744	CMakeFiles/cuda_hello.dir/cmake_device_link.obj	e800f0b8e3e8b80c
+11452	11659	7637305311725334	cuda_hello.exe	41a1fa341c1247b1
