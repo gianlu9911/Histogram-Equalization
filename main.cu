@@ -8,5 +8,6 @@
 
 int main(){
   processImageParallelCombined("../imgs/lena_rgb.png", "../execution_times.csv");
+  // processImage("../imgs/lena_rgb.png", "../execution_times.csv");
   return 0;
 }

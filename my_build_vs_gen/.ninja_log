@@ -1,16 +1,10 @@
 # ninja log v6
-31	7066	7638261264099274	CMakeFiles/cuda_hello.dir/main.cu.obj	8ec9643ef6ff5f1c
-7067	9833	7638261334463326	CMakeFiles/cuda_hello.dir/cmake_device_link.obj	e800f0b8e3e8b80c
-9833	10043	7638261362129976	cuda_hello.exe	41a1fa341c1247b1
-3	7799	7638390722299559	CMakeFiles/cuda_hello.dir/main.cu.obj	8ec9643ef6ff5f1c
-7799	10525	7638390800164191	CMakeFiles/cuda_hello.dir/cmake_device_link.obj	e800f0b8e3e8b80c
-10525	10945	7638390827454470	cuda_hello.exe	41a1fa341c1247b1
-3	7147	7638391821230306	CMakeFiles/cuda_hello.dir/main.cu.obj	8ec9643ef6ff5f1c
-7148	9869	7638391892649712	CMakeFiles/cuda_hello.dir/cmake_device_link.obj	e800f0b8e3e8b80c
-9880	10081	7638391919994487	cuda_hello.exe	41a1fa341c1247b1
-31	7044	7638392640074985	CMakeFiles/cuda_hello.dir/main.cu.obj	8ec9643ef6ff5f1c
-7044	9807	7638392710232138	CMakeFiles/cuda_hello.dir/cmake_device_link.obj	e800f0b8e3e8b80c
-9807	10166	7638392737864742	cuda_hello.exe	41a1fa341c1247b1
-32	7210	7638400902530268	CMakeFiles/cuda_hello.dir/main.cu.obj	8ec9643ef6ff5f1c
-7210	9824	7638400974307885	CMakeFiles/cuda_hello.dir/cmake_device_link.obj	e800f0b8e3e8b80c
-9824	10028	7638401000382237	cuda_hello.exe	41a1fa341c1247b1
+3	7264	7638458066248350	CMakeFiles/cuda_hello.dir/main.cu.obj	8ec9643ef6ff5f1c
+7266	9940	7638458138852427	CMakeFiles/cuda_hello.dir/cmake_device_link.obj	e800f0b8e3e8b80c
+9940	10538	7638458165591297	cuda_hello.exe	41a1fa341c1247b1
+32	6844	7638458839906407	CMakeFiles/cuda_hello.dir/main.cu.obj	8ec9643ef6ff5f1c
+6845	9618	7638458908029654	CMakeFiles/cuda_hello.dir/cmake_device_link.obj	e800f0b8e3e8b80c
+9618	9834	7638458935787658	cuda_hello.exe	41a1fa341c1247b1
+32	6993	7638458994004050	CMakeFiles/cuda_hello.dir/main.cu.obj	8ec9643ef6ff5f1c
+6993	9623	7638459063608648	CMakeFiles/cuda_hello.dir/cmake_device_link.obj	e800f0b8e3e8b80c
+9623	9955	7638459089845947	cuda_hello.exe	41a1fa341c1247b1
