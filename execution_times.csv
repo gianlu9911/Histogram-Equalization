@@ -30,3 +30,7 @@ Resolution,ExecutionTime (ms),Channels,Type
 3840x2160,2.3694,PARALLEL,1
 Resolution,ExecutionTime (ms),Channels,Type
 500x500,0.628,PARALLEL,1
+Resolution,ExecutionTime (ms),Channels,Type
+500x500,0.6201,PARALLEL,1
+Resolution,ExecutionTime (ms),Channels,Type
+500x500,1154.94,PARALLEL,1
