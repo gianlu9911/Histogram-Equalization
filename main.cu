@@ -1,13 +1,12 @@
-#include <cuda_runtime.h>
-#include <iostream>
-#include <opencv2/opencv.hpp>
-#include "Sequential.h"
 #include "Parallel.cuh"
+#include "Sequential.h"
 
-
+using namespace cv;
+using namespace std;
 
 int main(){
-  processImageParallelCombined("../imgs/lena_rgb.png", "../execution_times.csv");
-  // processImage("../imgs/lena_rgb.png", "../execution_times.csv");
-  return 0;
+    processImage("../imgs/lena_rgb.png", "../execution_times.csv");
+    processImageCuda("../imgs/lena_rgb.png", "../execution_times.csv");
+    return 0;
 }
+

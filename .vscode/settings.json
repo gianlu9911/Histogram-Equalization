@@ -3,6 +3,10 @@
         "xstring": "cpp",
         "fstream": "cpp",
         "xlocmes": "cpp",
-        "locale": "cpp"
+        "locale": "cpp",
+        "iostream": "cpp",
+        "__node_handle": "cpp",
+        "queue": "cpp",
+        "stack": "cpp"
     }
 }

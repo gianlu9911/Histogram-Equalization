@@ -6,24 +6,24 @@ file_path = "execution_times.csv"  # Replace with the correct file name if neede
 df = pd.read_csv(file_path)
 
 # Pivot the data for better structure
-sequential = df[df['type'] == 'SEQUENTIAL']
-parallel = df[df['type'] == 'PARALLEL']
+sequential = df[df['Type'] == 'SEQUENTIAL']
+parallel = df[df['Type'] == 'PARALLEL']
 
 # Ensure the data aligns by Resolution and Channels
 merged = sequential.merge(
     parallel,
-    on=['Resolution', 'channels'],
+    on=['Resolution', 'Channels'],
     suffixes=('_sequential', '_parallel')
 )
 
 # Calculate speedup
-merged['Speedup'] = merged['time_sequential'] / merged['time_parallel']
+merged['Speedup'] = merged['Time_sequential'] / merged['Time_parallel']
 
 # Plotting
 fig, ax = plt.subplots()
 
-for channels in merged['channels'].unique():
-    subset = merged[merged['channels'] == channels]
+for channels in merged['Channels'].unique():
+    subset = merged[merged['Channels'] == channels]
     ax.plot(
         subset['Resolution'], 
         subset['Speedup'], 

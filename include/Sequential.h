@@ -50,20 +50,21 @@ void performHistogramEqualization(Mat &channel) {
     }
 }
 
-void RGBtoYCbCr(const unsigned char& R, const unsigned char& G, const unsigned char& B,
-    unsigned char& Y, unsigned char& Cb, unsigned char& Cr) {
-Y = static_cast<unsigned char>(0.299 * R + 0.587 * G + 0.114 * B);
-Cb = static_cast<unsigned char>(128 - 0.168736 * R - 0.331264 * G + 0.5 * B);
-Cr = static_cast<unsigned char>(128 + 0.5 * R - 0.418688 * G - 0.081312 * B);
+// Convert from RGB to YCbCr; note: OpenCV uses BGR order.
+void RGBtoYCbCr(const unsigned char &R, const unsigned char &G, const unsigned char &B,
+    unsigned char &Y, unsigned char &Cb, unsigned char &Cr) {
+    Y = static_cast<unsigned char>(0.299 * R + 0.587 * G + 0.114 * B);
+    Cb = static_cast<unsigned char>(128 - 0.168736 * R - 0.331264 * G + 0.5 * B);
+    Cr = static_cast<unsigned char>(128 + 0.5 * R - 0.418688 * G - 0.081312 * B);
 }
 
-void YCbCrtoRGB(const unsigned char& Y, const unsigned char& Cb, const unsigned char& Cr,
-    unsigned char& R, unsigned char& G, unsigned char& B) {
-R = static_cast<unsigned char>(std::min(255.0, std::max(0.0, Y + 1.402 * (Cr - 128))));
-G = static_cast<unsigned char>(std::min(255.0, std::max(0.0, Y - 0.344136 * (Cb - 128) - 0.714136 * (Cr - 128))));
-B = static_cast<unsigned char>(std::min(255.0, std::max(0.0, Y + 1.772 * (Cb - 128))));
+// Convert from YCbCr to RGB.
+void YCbCrtoRGB(const unsigned char &Y, const unsigned char &Cb, const unsigned char &Cr,
+    unsigned char &R, unsigned char &G, unsigned char &B) {
+    R = static_cast<unsigned char>(min(255.0, max(0.0, Y + 1.402 * (Cr - 128))));
+    G = static_cast<unsigned char>(min(255.0, max(0.0, Y - 0.344136 * (Cb - 128) - 0.714136 * (Cr - 128))));
+    B = static_cast<unsigned char>(min(255.0, max(0.0, Y + 1.772 * (Cb - 128))));
 }
-
 
 void processImage(const string &inputPath, const string &csvPath) {
     // Define target resolutions: HD, Full HD, and 4K
@@ -94,12 +95,21 @@ void processImage(const string &inputPath, const string &csvPath) {
         string resStr = to_string(res.width) + "x" + to_string(res.height);
         
         // Append the resolution, execution time, pipeline type, and number of channels (1 for grayscale) to CSV
-        ofstream csvFile(csvPath, ios::app);
-        if (csvFile.is_open()) {
-            csvFile << resStr << "," << execTime << ",SEQUENTIAL,1\n";
-            csvFile.close();
-        } else {
-            cerr << "Error: Could not open CSV file for writing." << endl;
+        {
+            ifstream checkFile(csvPath);
+            bool isEmpty = checkFile.peek() == ifstream::traits_type::eof();
+            checkFile.close();
+
+            ofstream csvFile(csvPath, ios::app);
+            if (csvFile.is_open()) {
+                if (isEmpty) {
+                    csvFile << "Resolution,Time,Type,Channels\n";
+                }
+                csvFile << resStr << "," << execTime << ",SEQUENTIAL,1\n";
+                csvFile.close();
+            } else {
+                cerr << "Error: Could not open CSV file for writing." << endl;
+            }
         }
         
         // Display the original resized grayscale and the equalized image
@@ -123,7 +133,7 @@ void processImage(const string &inputPath, const string &csvPath) {
         resize(colorImage, resizedColor, res);
         auto start = chrono::high_resolution_clock::now();
 
-        // Prepare YCbCr arrays
+        // Prepare YCbCr channels
         Mat yChannel(resizedColor.size(), CV_8UC1);
         Mat cbChannel(resizedColor.size(), CV_8UC1);
         Mat crChannel(resizedColor.size(), CV_8UC1);
@@ -133,19 +143,16 @@ void processImage(const string &inputPath, const string &csvPath) {
             for (int j = 0; j < resizedColor.cols; j++) {
                 Vec3b pixel = resizedColor.at<Vec3b>(i, j);
                 unsigned char Y, Cb, Cr;
-                RGBtoYCbCr(pixel[2], pixel[1], pixel[0], Y, Cb, Cr); // OpenCV uses BGR order
+                // OpenCV uses BGR order
+                RGBtoYCbCr(pixel[2], pixel[1], pixel[0], Y, Cb, Cr);
                 yChannel.at<uchar>(i, j) = Y;
                 cbChannel.at<uchar>(i, j) = Cb;
                 crChannel.at<uchar>(i, j) = Cr;
             }
         }
 
-        // Start timing for color image processing
-
         // Perform histogram equalization on the Y channel
         performHistogramEqualization(yChannel);
-
-        
 
         // Convert YCbCr back to RGB
         Mat equalizedColor(resizedColor.size(), resizedColor.type());
@@ -153,24 +160,32 @@ void processImage(const string &inputPath, const string &csvPath) {
             for (int j = 0; j < resizedColor.cols; j++) {
                 unsigned char R, G, B;
                 YCbCrtoRGB(yChannel.at<uchar>(i, j), cbChannel.at<uchar>(i, j), crChannel.at<uchar>(i, j), R, G, B);
-                equalizedColor.at<Vec3b>(i, j) = Vec3b(B, G, R); // OpenCV uses BGR order
+                // OpenCV uses BGR order
+                equalizedColor.at<Vec3b>(i, j) = Vec3b(B, G, R);
             }
         }
         auto end = chrono::high_resolution_clock::now();
         double execTime = chrono::duration<double, milli>(end - start).count();
 
-        
-        
         // Create a resolution string (e.g., "1920x1080")
         string resStr = to_string(res.width) + "x" + to_string(res.height);
         
         // Append the resolution, execution time, pipeline type, and number of channels (3 for color) to CSV
-        ofstream csvFile(csvPath, ios::app);
-        if (csvFile.is_open()) {
-            csvFile << resStr << "," << execTime << ",SEQUENTIAL,3\n";
-            csvFile.close();
-        } else {
-            cerr << "Error: Could not open CSV file for writing." << endl;
+        {
+            ifstream checkFile(csvPath);
+            bool isEmpty = checkFile.peek() == ifstream::traits_type::eof();
+            checkFile.close();
+
+            ofstream csvFile(csvPath, ios::app);
+            if (csvFile.is_open()) {
+                if (isEmpty) {
+                    csvFile << "Resolution,Time,Type,Channels\n";
+                }
+                csvFile << resStr << "," << execTime << ",SEQUENTIAL,3\n";
+                csvFile.close();
+            } else {
+                cerr << "Error: Could not open CSV file for writing." << endl;
+            }
         }
         
         // Display the original resized color image and the equalized result
@@ -181,3 +196,4 @@ void processImage(const string &inputPath, const string &csvPath) {
         destroyWindow("Color Equalized - " + resStr);
     }
 }
+
