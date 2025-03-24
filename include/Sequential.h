@@ -28,6 +28,7 @@ void computeCDF(const int histogram[L], float cdf[L], int totalPixels) {
 }
 
 // Function to perform histogram equalization on a single channel using the computed CDF
+
 void performHistogramEqualization(Mat &channel) {
     int histogram[L];
     float cdf[L];
@@ -50,7 +51,6 @@ void performHistogramEqualization(Mat &channel) {
     }
 }
 
-// Convert from RGB to YCbCr; note: OpenCV uses BGR order.
 void RGBtoYCbCr(const unsigned char &R, const unsigned char &G, const unsigned char &B,
     unsigned char &Y, unsigned char &Cb, unsigned char &Cr) {
     Y = static_cast<unsigned char>(0.299 * R + 0.587 * G + 0.114 * B);
@@ -58,7 +58,6 @@ void RGBtoYCbCr(const unsigned char &R, const unsigned char &G, const unsigned c
     Cr = static_cast<unsigned char>(128 + 0.5 * R - 0.418688 * G - 0.081312 * B);
 }
 
-// Convert from YCbCr to RGB.
 void YCbCrtoRGB(const unsigned char &Y, const unsigned char &Cb, const unsigned char &Cr,
     unsigned char &R, unsigned char &G, unsigned char &B) {
     R = static_cast<unsigned char>(min(255.0, max(0.0, Y + 1.402 * (Cr - 128))));

@@ -13,29 +13,45 @@ void histogramEqualization(unsigned char* d_in, unsigned char* d_out, int width,
     CUDA_CHECK(cudaMalloc(&d_hist, NUM_BINS * sizeof(int)));
     CUDA_CHECK(cudaMemset(d_hist, 0, NUM_BINS * sizeof(int)));
     
+    // Launch kernel to compute histogram using tiling.
     dim3 block(TILE_WIDTH, TILE_WIDTH);
     dim3 grid((width + TILE_WIDTH - 1) / TILE_WIDTH, (height + TILE_WIDTH - 1) / TILE_WIDTH);
     computeHistogramTiled<<<grid, block>>>(d_in, d_hist, width, height);
     CUDA_CHECK(cudaDeviceSynchronize());
     
+    // Copy histogram into a thrust device vector.
     thrust::device_vector<int> d_hist_vec(NUM_BINS);
-    CUDA_CHECK(cudaMemcpy(thrust::raw_pointer_cast(d_hist_vec.data()), d_hist, NUM_BINS * sizeof(int), cudaMemcpyDeviceToDevice));
+    CUDA_CHECK(cudaMemcpy(thrust::raw_pointer_cast(d_hist_vec.data()),
+         d_hist, NUM_BINS * sizeof(int), cudaMemcpyDeviceToDevice));
     
+    // Compute the CDF using an inclusive scan.
     thrust::device_vector<int> d_cdf(NUM_BINS);
     thrust::inclusive_scan(d_hist_vec.begin(), d_hist_vec.end(), d_cdf.begin());
     
+    // Get the first value of the CDF (minimum non-zero value).
     int cdf0 = d_cdf.front();
-    thrust::device_vector<unsigned char> d_lut(NUM_BINS);
-    thrust::transform(d_cdf.begin(), d_cdf.end(), d_lut.begin(), ComputeLutFunctor(imgSize, cdf0));
     
+    // Create a thrust device vector for the LUT.
+    thrust::device_vector<unsigned char> d_lut(NUM_BINS);
+    
+    // Instead of using thrust::transform with a functor, we launch our kernel.
+    int threadsPerBlock = 256;
+    int blocksPerGrid = (NUM_BINS + threadsPerBlock - 1) / threadsPerBlock;
+    int* d_cdf_ptr = thrust::raw_pointer_cast(d_cdf.data());
+    unsigned char* d_lut_ptr = thrust::raw_pointer_cast(d_lut.data());
+    
+    applyLutKernel<<<blocksPerGrid, threadsPerBlock>>>(d_cdf_ptr, d_lut_ptr, imgSize, cdf0, NUM_BINS);
+    CUDA_CHECK(cudaDeviceSynchronize());
+    
+    // Apply the equalization by mapping the original image through the LUT.
     int threads = 256;
     int blocks = (imgSize + threads - 1) / threads;
-    unsigned char* d_lut_ptr = thrust::raw_pointer_cast(d_lut.data());
     applyEqualization<<<blocks, threads>>>(d_in, d_out, d_lut_ptr, imgSize);
     CUDA_CHECK(cudaDeviceSynchronize());
     
     CUDA_CHECK(cudaFree(d_hist));
 }
+
 
 // -----------------------------------------------------------------------------
 // Pipeline Function: Run both grayscale and RGB (Y-channel) equalization.
@@ -54,7 +70,8 @@ void runHistogramEqualizationPipelines(const Mat &grayImage, const Mat &rgbImage
     unsigned char *d_gray = nullptr, *d_grayEqualized = nullptr;
     CUDA_CHECK(cudaMalloc(&d_gray, graySize * sizeof(unsigned char)));
     CUDA_CHECK(cudaMalloc(&d_grayEqualized, graySize * sizeof(unsigned char)));
-    CUDA_CHECK(cudaMemcpy(d_gray, grayImage.data, graySize * sizeof(unsigned char), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_gray, grayImage.data, graySize * sizeof(unsigned char),
+     cudaMemcpyHostToDevice));
     
     CUDA_CHECK(cudaEventRecord(start, 0));
     histogramEqualization(d_gray, d_grayEqualized, grayImage.cols, grayImage.rows);
@@ -63,7 +80,8 @@ void runHistogramEqualizationPipelines(const Mat &grayImage, const Mat &rgbImage
     CUDA_CHECK(cudaEventElapsedTime(&grayscaleTime, start, stop));
     
     Mat grayEqualized(grayImage.size(), grayImage.type());
-    CUDA_CHECK(cudaMemcpy(grayEqualized.data, d_grayEqualized, graySize * sizeof(unsigned char), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(grayEqualized.data, d_grayEqualized, graySize * 
+        sizeof(unsigned char), cudaMemcpyDeviceToHost));
     
     CUDA_CHECK(cudaFree(d_gray));
     CUDA_CHECK(cudaFree(d_grayEqualized));
@@ -149,6 +167,8 @@ void runHistogramEqualizationPipelines(const Mat &grayImage, const Mat &rgbImage
     
     // Display results.
     imshow("Equalized Grayscale", grayEqualized);
+    imwrite("lena_gray_equalized.png", grayEqualized);
+    imwrite("lena_rgb_equalized.png", rgbEqualized);
     imshow("Equalized RGB (Y Channel Equalized)", rgbEqualized);
     waitKey(0);
 }
@@ -173,7 +193,7 @@ int processImageCuda(std::string imgPath, std::string csvPath) {
     cvtColor(originalRGB, originalGray, COLOR_BGR2GRAY);
     
     // Define target resolutions: HD (1280x720), FullHD (1920x1080), 4K (3840x2160)
-    vector<Size> resolutions = { Size(1280, 720), Size(1920, 1080), Size(3840, 2160) };
+    vector<Size> resolutions = { Size(1280,720), Size(1920,1080), Size(3840,2160) };
     
     // Define a local lambda to process one resolution.
     auto processResolution = [&](const Size &res) {

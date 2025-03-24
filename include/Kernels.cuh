@@ -61,8 +61,7 @@ __global__ void computeHistogramTiled(const unsigned char* d_img, int* d_hist, i
 }
 
 // Kernel to apply histogram equalization using a precomputed lookup table.
-__global__ void applyEqualization(const unsigned char* d_img, unsigned char* d_out,
-                                  const unsigned char* d_lut, int imgSize) {
+__global__ void applyEqualization(const unsigned char* d_img, unsigned char* d_out, const unsigned char* d_lut, int imgSize) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < imgSize)
         d_out[idx] = d_lut[d_img[idx]];
@@ -87,6 +86,7 @@ __global__ void rgb2ycbcr(const uchar4* d_rgb, uchar4* d_ycbcr, int numPixels) {
 }
 
 // CUDA kernel to convert YCbCr to RGB using vectorized (uchar4) operations.
+
 __global__ void ycbcr2rgb(const uchar4* d_ycbcr, uchar4* d_rgb, int numPixels) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < numPixels) {
@@ -121,17 +121,16 @@ __global__ void updateYChannel(uchar4* d_ycbcr, const unsigned char* d_YEqualize
     }
 }
 
-// -----------------------------------------------------------------------------
-// Thrust functor to compute LUT values on the GPU.
-// -----------------------------------------------------------------------------
-struct ComputeLutFunctor {
-    int totalPixels;
-    int cdf0;
-    __host__ __device__
-    ComputeLutFunctor(int t, int c0) : totalPixels(t), cdf0(c0) {}
-    __host__ __device__
-    unsigned char operator()(const int &cdf_val) const {
-        float norm = (cdf_val - cdf0) / float(totalPixels - cdf0);
-        return static_cast<unsigned char>(norm * 255.0f + 0.5f);
+// Device function to compute a single LUT value from a CDF value.
+__device__ unsigned char computeLutValue(int cdf_val, int totalPixels, int cdf0) {
+    float norm = (cdf_val - cdf0) / float(totalPixels - cdf0);
+    return static_cast<unsigned char>(norm * 255.0f + 0.5f);
+}
+
+// Kernel that applies the computeLutValue function to each element of the CDF array.
+__global__ void applyLutKernel(const int* d_cdf, unsigned char* d_lut, int totalPixels, int cdf0, int numBins) {
+    int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    if (idx < numBins) {
+        d_lut[idx] = computeLutValue(d_cdf[idx], totalPixels, cdf0);
     }
-};
+}
