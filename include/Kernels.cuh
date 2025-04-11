@@ -8,11 +8,8 @@
 #include <sys/stat.h>
 #include <vector>
 
-using namespace cv;
-using namespace std;
-
 #define NUM_BINS 256
-#define TILE_WIDTH 32
+#define TILE_WIDTH 8
 
 // -----------------------------------------------------------------------------
 // CUDA Error Checking Macro
@@ -41,24 +38,36 @@ __global__ void dummyKernel() {
 // Kernel Definitions
 // -----------------------------------------------------------------------------
 
-// Grayscale histogram kernel using tiling and shared memory.
 __global__ void computeHistogramTiled(const unsigned char* d_img, int* d_hist, int width, int height) {
     __shared__ int sharedHist[NUM_BINS];
-    int tid = threadIdx.x + threadIdx.y * blockDim.x;
-    if (tid < NUM_BINS)
-        sharedHist[tid] = 0;
+
+    int tid = threadIdx.y * blockDim.x + threadIdx.x;
+    int blockSize = blockDim.x * blockDim.y;
+
+    // Initialize the shared histogram in parallel
+    for (int i = tid; i < NUM_BINS; i += blockSize) {
+        sharedHist[i] = 0;
+    }
     __syncthreads();
 
-    int x = blockIdx.x * TILE_WIDTH + threadIdx.x;
-    int y = blockIdx.y * TILE_WIDTH + threadIdx.y;
+    // Compute global pixel coordinates
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    // Compute histogram in shared memory
     if (x < width && y < height) {
         int idx = y * width + x;
         atomicAdd(&sharedHist[d_img[idx]], 1);
     }
     __syncthreads();
-    if (tid < NUM_BINS)
-        atomicAdd(&d_hist[tid], sharedHist[tid]);
+
+    // Merge shared histogram to global histogram
+    for (int i = tid; i < NUM_BINS; i += blockSize) {
+        atomicAdd(&d_hist[i], sharedHist[i]);
+    }
 }
+
+
 
 // Kernel to apply histogram equalization using a precomputed lookup table.
 __global__ void applyEqualization(const unsigned char* d_img, unsigned char* d_out, const unsigned char* d_lut, int imgSize) {

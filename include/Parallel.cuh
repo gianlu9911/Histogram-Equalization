@@ -1,7 +1,11 @@
 #include "Kernels.cuh"
 
 #define NUM_BINS 256
-#define TILE_WIDTH 32
+#define TILE_WIDTH 8
+
+using namespace cv;
+using namespace std;
+
 
 // -----------------------------------------------------------------------------
 // Helper function: Perform histogram equalization on device data.
@@ -18,6 +22,8 @@ void histogramEqualization(unsigned char* d_in, unsigned char* d_out, int width,
     dim3 grid((width + TILE_WIDTH - 1) / TILE_WIDTH, (height + TILE_WIDTH - 1) / TILE_WIDTH);
     computeHistogramTiled<<<grid, block>>>(d_in, d_hist, width, height);
     CUDA_CHECK(cudaDeviceSynchronize());
+
+
     
     // Copy histogram into a thrust device vector.
     thrust::device_vector<int> d_hist_vec(NUM_BINS);
@@ -149,21 +155,40 @@ void runHistogramEqualizationPipelines(const Mat &grayImage, const Mat &rgbImage
     CUDA_CHECK(cudaEventDestroy(stop));
     
     // Log execution times using a local lambda.
-    auto writeCSVLine = [&](const string &line) {
-        ofstream ofs("../execution_times.csv", ios::app);
+    auto writeCSVLine = [&](const std::string &line) {
+        const std::string filePath = "../execution_times.csv";
+        bool writeHeader = false;
+
+        // Check if the file exists and is empty
+        std::ifstream ifs(filePath);
+        if (!ifs.good() || ifs.peek() == std::ifstream::traits_type::eof()) {
+            writeHeader = true;
+        }
+        ifs.close();
+
+        // Open in append mode and write header if needed
+        std::ofstream ofs(filePath, std::ios::app);
         if (!ofs) {
-            cerr << "Error opening CSV file." << endl;
+            std::cerr << "Error opening CSV file." << std::endl;
             return;
         }
+
+        if (writeHeader) {
+            ofs << "Resolution,ExecutionTime,Mode,Channels\n";
+        }
+
         ofs << line << "\n";
         ofs.close();
     };
-    
-    string resolution = to_string(grayImage.cols) + "x" + to_string(grayImage.rows);
-    string grayLine = resolution + "," + to_string(grayscaleTime) + ",PARALLEL,1";
-    string rgbLine  = resolution + "," + to_string(rgbTime) + ",PARALLEL,3";
+
+    // Prepare and log the data
+    std::string resolution = std::to_string(grayImage.cols) + "x" + std::to_string(grayImage.rows);
+    std::string grayLine = resolution + "," + std::to_string(grayscaleTime) + ",PARALLEL,1";
+    std::string rgbLine  = resolution + "," + std::to_string(rgbTime) + ",PARALLEL,3";
+
     writeCSVLine(grayLine);
     writeCSVLine(rgbLine);
+
     
     // Display results.
     imshow("Equalized Grayscale", grayEqualized);
@@ -177,13 +202,13 @@ void runHistogramEqualizationPipelines(const Mat &grayImage, const Mat &rgbImage
 // -----------------------------------------------------------------------------
 // Main: Process all target resolutions using lambdas to increase reuse.
 // -----------------------------------------------------------------------------
-int processImageCuda(std::string imgPath, std::string csvPath) {
+int processImageCuda(std::string imgPath) {
     // Warm-up: launch a dummy kernel to initialize GPU.
     dummyKernel<<<1, 1>>>();
     CUDA_CHECK(cudaDeviceSynchronize());
     
     // Load the original RGB image.
-    Mat originalRGB = imread("../imgs/lena_rgb.png", IMREAD_COLOR);
+    Mat originalRGB = imread(imgPath, IMREAD_COLOR);
     if (originalRGB.empty()) {
         cerr << "Error: Could not load RGB image!" << endl;
         return -1;
@@ -193,11 +218,11 @@ int processImageCuda(std::string imgPath, std::string csvPath) {
     cvtColor(originalRGB, originalGray, COLOR_BGR2GRAY);
     
     // Define target resolutions: HD (1280x720), FullHD (1920x1080), 4K (3840x2160)
-    vector<Size> resolutions = { Size(1280,720), Size(1920,1080), Size(3840,2160) };
+    vector<Size> resolutions = { Size(3840,2160), Size(1920,1080), Size(1280,720) };
     
     // Define a local lambda to process one resolution.
     auto processResolution = [&](const Size &res) {
-        cout << "Processing resolution: " << res.width << "x" << res.height << endl;
+        //cout << "Processing resolution: " << res.width << "x" << res.height << endl;
         Mat resizedGray, resizedRGB;
         resize(originalGray, resizedGray, res);
         resize(originalRGB, resizedRGB, res);
