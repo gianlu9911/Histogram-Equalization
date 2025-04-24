@@ -109,7 +109,7 @@ void runHistogramEqualizationPipelines(const Mat &grayImage, const Mat &rgbImage
     CUDA_CHECK(cudaMalloc(&d_rgbEqualized, numPixels * sizeof(uchar4)));
     CUDA_CHECK(cudaMemcpy(d_rgb, h_rgb, numPixels * sizeof(uchar4), cudaMemcpyHostToDevice));
     
-    int threadsPerBlock = 256;
+    int threadsPerBlock = 1024;
     int blocksPerGrid = (numPixels + threadsPerBlock - 1) / threadsPerBlock;
     CUDA_CHECK(cudaEventRecord(start, 0));
     rgb2ycbcr<<<blocksPerGrid, threadsPerBlock>>>(d_rgb, d_ycbcr, numPixels);
@@ -218,7 +218,7 @@ int processImageCuda(std::string imgPath) {
     cvtColor(originalRGB, originalGray, COLOR_BGR2GRAY);
     
     // Define target resolutions: HD (1280x720), FullHD (1920x1080), 4K (3840x2160)
-    vector<Size> resolutions = { Size(3840,2160), Size(1920,1080), Size(1280,720) };
+    vector<Size> resolutions = {  Size(3840,2160) };
     
     // Define a local lambda to process one resolution.
     auto processResolution = [&](const Size &res) {
