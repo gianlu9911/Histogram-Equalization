@@ -1,3 +1,0 @@
-C:/Users/calli/Desktop/Histogram-Equalization/my_build_vs_gen/CMakeFiles/cuda_hello.dir
-C:/Users/calli/Desktop/Histogram-Equalization/my_build_vs_gen/CMakeFiles/edit_cache.dir
-C:/Users/calli/Desktop/Histogram-Equalization/my_build_vs_gen/CMakeFiles/rebuild_cache.dir
